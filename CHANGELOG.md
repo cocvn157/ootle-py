@@ -5,6 +5,18 @@ All notable changes to `ootle` are recorded here. The project follows
 releases may introduce breaking changes between minor versions, but
 each is called out below.
 
+## [0.6.2] — 2026-11-16
+
+Tracks the upstream
+[`tari-ootle` v0.53.5](https://github.com/tari-project/tari-ootle/releases/tag/v0.53.5)
+release, with the v0.53.4 changes.
+
+### Changed
+
+- **Vendored `ootle-wasm` and `ootle-wasm-bor` bumped to 0.53.5.**
+- **A transaction may persist at most 1,000 substates** (upstream 0.53.4),
+  minted non-fungibles included; split large mints across transactions.
+
 ## [0.6.1] — 2026-11-12
 
 Tracks the upstream
