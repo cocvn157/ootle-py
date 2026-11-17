@@ -10,7 +10,7 @@ from pytest_httpx import HTTPXMock
 from ootle import AsyncOotleClient, LocalSigner, OotleSecretKey, OotleWallet
 from ootle._async._send import mark_dry_run
 from ootle._types.network import Network
-from ootle._types.transaction import TransactionRequest, UnsignedTransaction
+from ootle._types.transaction import FEE_ESTIMATE_ALLOWANCE, TransactionRequest, UnsignedTransaction
 from ootle.errors import InvalidArgumentError
 from tests._helpers.encoded import encoded
 
@@ -68,7 +68,8 @@ async def test_send_dry_run_returns_dry_run_result(httpx_mock: HTTPXMock) -> Non
     httpx_mock.add_response(url="http://idx/transactions/dry-run", json=_dry_run_response(750))
     async with AsyncOotleClient.connect("http://idx", wallet=_wallet()) as client:
         result = await client.send_dry_run(_unsigned_tx())
-    assert result.estimated_fee == 750
+    assert result.fees_charged == 750
+    assert result.estimated_fee == 750 + FEE_ESTIMATE_ALLOWANCE
 
 
 async def test_send_dry_run_outcome_commit(httpx_mock: HTTPXMock) -> None:

@@ -7,6 +7,7 @@ from typing import Any
 from ootle._types.outcome import TransactionOutcome
 from ootle._types.reject_reason import ExecutionFailure, InsufficientFeesPaid
 from ootle._types.transaction import (
+    FEE_ESTIMATE_ALLOWANCE,
     DryRunResult,
     Transaction,
     TransactionAuthorization,
@@ -87,15 +88,25 @@ def _fee_receipt(breakdown: dict[str, int]) -> dict[str, Any]:
     }
 
 
-def test_dry_run_estimated_fee_sums_cost_breakdown() -> None:
+def test_dry_run_fees_charged_sums_cost_breakdown() -> None:
     breakdown = {"RuntimeCall": 14, "Storage": 90, "TemplateLoad": 450}
     raw = _finalize(fee_receipt=_fee_receipt(breakdown))
-    assert _dry_run(raw).estimated_fee == 554
+    assert _dry_run(raw).fees_charged == 554
 
 
-def test_dry_run_estimated_fee_zero_on_empty_breakdown() -> None:
+def test_dry_run_fees_charged_none_on_missing_path() -> None:
+    assert _dry_run({}).fees_charged is None
+
+
+def test_dry_run_estimated_fee_adds_allowance_to_charge() -> None:
+    breakdown = {"RuntimeCall": 14, "Storage": 90, "TemplateLoad": 450}
+    raw = _finalize(fee_receipt=_fee_receipt(breakdown))
+    assert _dry_run(raw).estimated_fee == 554 + FEE_ESTIMATE_ALLOWANCE
+
+
+def test_dry_run_estimated_fee_is_allowance_on_empty_breakdown() -> None:
     raw = _finalize(fee_receipt=_fee_receipt({}))
-    assert _dry_run(raw).estimated_fee == 0
+    assert _dry_run(raw).estimated_fee == FEE_ESTIMATE_ALLOWANCE
 
 
 def test_dry_run_estimated_fee_returns_zero_on_missing_path() -> None:
@@ -104,7 +115,7 @@ def test_dry_run_estimated_fee_returns_zero_on_missing_path() -> None:
 
 def test_dry_run_estimated_fee_accepts_bare_finalize_block() -> None:
     raw = {"fee_receipt": _fee_receipt({"Initial": 7})}
-    assert _dry_run(raw).estimated_fee == 7
+    assert _dry_run(raw).estimated_fee == 7 + FEE_ESTIMATE_ALLOWANCE
 
 
 def test_dry_run_outcome_commit() -> None:

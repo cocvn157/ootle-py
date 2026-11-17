@@ -14,6 +14,7 @@ from pathlib import Path
 import ootle
 
 EXPECTED_NAMES = {
+    "FEE_ESTIMATE_ALLOWANCE",
     "TARI",
     "TARI_TOKEN",
     "Abort",

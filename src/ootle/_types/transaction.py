@@ -21,6 +21,14 @@ if TYPE_CHECKING:
 TransactionId = NewType("TransactionId", str)
 """Opaque transaction identifier (hex-encoded hash)."""
 
+FEE_ESTIMATE_ALLOWANCE = 12
+"""µTari a dry-run fee estimate carries on top of what the dry run was charged.
+
+Mirrors ``tari_engine_types::fees::FEE_ESTIMATE_ALLOWANCE``: the most a real
+run of the same transaction can cost over its dry run when built at a
+different fee.
+"""
+
 
 @dataclass(frozen=True, slots=True)
 class UnsignedTransaction:
@@ -123,25 +131,45 @@ class DryRunResult:
     raw: dict[str, Any]
 
     @property
-    def estimated_fee(self) -> Amount:
-        """Fee charged in the dry-run execution (µTari).
+    def fees_charged(self) -> Amount | None:
+        """Fee charged in the dry-run execution (µTari), or ``None`` if absent.
 
         Summed from ``raw["finalize"]["fee_receipt"]["cost_breakdown"]["breakdown"]``
         — the engine derives ``FeeReceipt::total_fees_charged`` the same way.
-        Returns ``Amount(0)`` if the path is absent.
+        This is what the dry run cost, not a fee to submit at: use
+        :attr:`estimated_fee` for that.
         """
         from ootle._types.amount import Amount  # noqa: PLC0415
 
         fee_receipt = _get(_finalize_block(self.raw), "fee_receipt")
         breakdown = _get(_get(fee_receipt, "cost_breakdown"), "breakdown")
         if not isinstance(breakdown, dict):
-            return Amount(0)
+            return None
         total = sum(
             v
             for v in cast("dict[str, Any]", breakdown).values()
             if isinstance(v, int) and not isinstance(v, bool)
         )
         return Amount(total)
+
+    @property
+    def estimated_fee(self) -> Amount:
+        """The fee (µTari) to submit this transaction at.
+
+        :attr:`fees_charged` plus :data:`FEE_ESTIMATE_ALLOWANCE`, matching the
+        engine's ``FeeReceipt::required_fees``. The fee is itself an input to
+        what a transaction is charged, so the real run of a transaction built
+        at a different fee than its dry run meters slightly differently; the
+        allowance covers that drift. It does not cover a different
+        transaction: re-estimate after changing the inputs or outputs.
+        Returns ``Amount(0)`` if the fee receipt is absent.
+        """
+        from ootle._types.amount import Amount  # noqa: PLC0415
+
+        charged = self.fees_charged
+        if charged is None:
+            return Amount(0)
+        return Amount(int(charged) + FEE_ESTIMATE_ALLOWANCE)
 
     @property
     def outcome(self) -> TransactionOutcome | None:
