@@ -5,6 +5,21 @@ All notable changes to `ootle` are recorded here. The project follows
 releases may introduce breaking changes between minor versions, but
 each is called out below.
 
+## [0.7.0] — 2026-11-17
+
+### Changed
+
+- **`DryRunResult.estimated_fee` includes the 12 µTari fee-estimate
+  allowance** (`FEE_ESTIMATE_ALLOWANCE`), matching the engine's
+  `required_fees` and the Rust, Go and wallet-daemon clients. Submitting at
+  the raw dry-run charge leaves no margin for the metering drift a different
+  fee causes, and an underpaid transaction is rejected outright.
+
+### Added
+
+- **`DryRunResult.fees_charged`**: the raw dry-run charge, or `None` when the
+  result carries no fee receipt.
+
 ## [0.6.2] — 2026-11-16
 
 Tracks the upstream

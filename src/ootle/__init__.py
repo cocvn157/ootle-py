@@ -71,6 +71,7 @@ from ootle._types.stealth import (
 from ootle._types.substate import Substate, SubstateId, SubstateRequirement
 from ootle._types.template import TemplateBlob
 from ootle._types.transaction import (
+    FEE_ESTIMATE_ALLOWANCE,
     DryRunResult,
     Transaction,
     TransactionAuthorization,
@@ -97,6 +98,7 @@ from ootle.wallet import OotleWallet
 _logging.getLogger("ootle").addHandler(_logging.NullHandler())
 
 __all__ = [
+    "FEE_ESTIMATE_ALLOWANCE",
     "TARI",
     "TARI_TOKEN",
     "Abort",
