@@ -35,6 +35,8 @@ from tests._helpers.stealth import REVEALED_RECEIVER
 from ._builder_helpers import COMPONENT, RESOURCE, make_client
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from pytest_httpx import HTTPXMock
 
     from ootle._crypto import CryptoProvider
@@ -147,7 +149,14 @@ class _NonStealthSigner:
     def address(self) -> Address:
         return self._address
 
-    def add_signature(self, tx_json: str, seal_pk: bytes, *, crypto: CryptoProvider) -> str:
+    def add_signature(
+        self,
+        tx_json: str,
+        seal_pk: bytes,
+        authorizers: Sequence[bytes],
+        *,
+        crypto: CryptoProvider,
+    ) -> str:
         return tx_json
 
     def seal(self, tx_json: str, *, crypto: CryptoProvider) -> str:

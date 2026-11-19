@@ -20,6 +20,42 @@ each is called out below.
 - **`DryRunResult.fees_charged`**: the raw dry-run charge, or `None` when the
   result carries no fee receipt.
 
+## [Unreleased]
+
+Tracks the upstream
+[`tari-ootle` v0.55.0](https://github.com/tari-project/tari-ootle/releases/tag/v0.55.0)
+release, with the v0.54.0 changes. 0.55 networks expect transaction
+schema V2, so earlier clients' co-signed transactions are rejected.
+
+### Breaking
+
+- **Authorizations bind the full authorizer set** (upstream schema V2,
+  tari-ootle#3827). Every co-signer signs over the public key of every
+  co-signer, so the set is fixed before anyone signs:
+  - `OotleWallet.authorize(address, unsigned, *, authorizers, crypto)`
+    takes the set (`address`'s key included).
+  - `Signer.add_signature(tx_json, seal_pk, authorizers, *, crypto)` and
+    `StealthSigner.add_stealth_signature(..., seal_pk, authorizers, *, crypto)`
+    take it; custom signers must add the parameter.
+  - `StealthSigner` gains `stealth_public_key(public_nonce, *, crypto)`.
+  - `CryptoProvider.hash_unsigned_transaction` and
+    `add_transaction_signer` take an `authorizers` sequence.
+- **`OotleWallet.seal` signs its co-signers over the folded
+  authorizations' keys plus its own co-signers' keys.** An authorization
+  produced elsewhere must be signed over that same set.
+  `OotleWallet.cosigner_keys()` returns the wallet's part.
+
+### Changed
+
+- **Vendored `ootle-wasm` and `ootle-wasm-bor` bumped to 0.55.0.** Sealed
+  transactions serialise as `{"V2": ...}`.
+- **Folded authorizations are sorted and de-duplicated by public key**:
+  the mempool rejects a list that is not strictly ascending.
+- **`AsyncWalletStealthAuthorizer.create_authorizations`** takes
+  `external_authorizers`, the keys of any other authorizations folded in.
+- **`UpdateComponentTemplate` is rejected** by 0.54+ networks; a
+  component's template no longer changes after creation.
+
 ## [0.6.2] — 2026-11-16
 
 Tracks the upstream

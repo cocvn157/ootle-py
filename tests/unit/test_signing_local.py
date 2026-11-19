@@ -56,6 +56,9 @@ def test_address_is_cached_after_first_call(crypto: CryptoProvider) -> None:
     assert a1 is a2
 
 
+AUTH = (b"\x11" * 32, b"\x22" * 32)
+
+
 def test_add_signature_delegates_to_crypto() -> None:
     mock = MockCryptoProvider()
     sk = OotleSecretKey(
@@ -65,11 +68,11 @@ def test_add_signature_delegates_to_crypto() -> None:
     )
     signer = LocalSigner(sk)
     seal_pk = b"\x42" * 32
-    out = signer.add_signature("tx-json", seal_pk, crypto=mock)
+    out = signer.add_signature("tx-json", seal_pk, AUTH, crypto=mock)
     # MockCryptoProvider returns a marker string embedding the inputs:
     assert out.startswith('{"prev":tx-json,"signer":"')
     # Calling again with the same inputs should produce the same marker:
-    again = signer.add_signature("tx-json", seal_pk, crypto=mock)
+    again = signer.add_signature("tx-json", seal_pk, AUTH, crypto=mock)
     assert again == out
 
 
@@ -89,13 +92,13 @@ def test_add_signature_threads_seal_pk_through_to_bridge() -> None:
     signer = LocalSigner(sk)
     # A pk that is *not* this signer's own — proves the param is honoured.
     seal_pk = b"\xab" * 32
-    out_via_signer = signer.add_signature("tx-json", seal_pk, crypto=mock)
-    out_direct = mock.add_transaction_signer("tx-json", sk.owner_secret, seal_pk)
+    out_via_signer = signer.add_signature("tx-json", seal_pk, AUTH, crypto=mock)
+    out_direct = mock.add_transaction_signer("tx-json", sk.owner_secret, seal_pk, AUTH)
     assert out_via_signer == out_direct
     # And the signer's own pk would produce a different marker — confirm.
     own_pk, _ = mock.ootle_public_key_from_secret(sk.owner_secret, sk.view_secret)
     assert own_pk != seal_pk
-    assert out_via_signer != mock.add_transaction_signer("tx-json", sk.owner_secret, own_pk)
+    assert out_via_signer != mock.add_transaction_signer("tx-json", sk.owner_secret, own_pk, AUTH)
 
 
 def test_seal_delegates_to_crypto() -> None:
@@ -128,11 +131,37 @@ def test_add_stealth_signature_derives_one_time_key_then_signs() -> None:
     public_nonce = b"\x07" * 32
     seal_pk = b"\x42" * 32
 
-    out = signer.add_stealth_signature("tx-json", public_nonce, seal_pk, crypto=mock)
+    out = signer.add_stealth_signature("tx-json", public_nonce, seal_pk, AUTH, crypto=mock)
 
     one_time = mock.stealth_dh_secret(
         Network.LOCAL_NET.value, sk.owner_secret, sk.view_secret, public_nonce
     )
-    assert out == mock.add_transaction_signer("tx-json", one_time, seal_pk)
+    assert out == mock.add_transaction_signer("tx-json", one_time, seal_pk, AUTH)
     # Signing with the raw account secret would produce a different marker.
-    assert out != mock.add_transaction_signer("tx-json", sk.owner_secret, seal_pk)
+    assert out != mock.add_transaction_signer("tx-json", sk.owner_secret, seal_pk, AUTH)
+
+
+def test_add_signature_commits_to_authorizer_set() -> None:
+    """A different authorizer set produces a different signature."""
+    mock = MockCryptoProvider()
+    sk = OotleSecretKey(
+        network=Network.LOCAL_NET, owner_secret=b"\x01" * 32, view_secret=b"\x02" * 32
+    )
+    signer = LocalSigner(sk)
+    seal_pk = b"\x42" * 32
+    a = signer.add_signature("tx-json", seal_pk, AUTH, crypto=mock)
+    b = signer.add_signature("tx-json", seal_pk, AUTH[:1], crypto=mock)
+    assert a != b
+
+
+def test_stealth_public_key_is_the_one_time_key() -> None:
+    mock = MockCryptoProvider()
+    sk = OotleSecretKey(
+        network=Network.LOCAL_NET, owner_secret=b"\x01" * 32, view_secret=b"\x02" * 32
+    )
+    nonce = b"\x07" * 32
+    one_time = mock.stealth_dh_secret(
+        Network.LOCAL_NET.value, sk.owner_secret, sk.view_secret, nonce
+    )
+    pk = LocalSigner(sk).stealth_public_key(nonce, crypto=mock)
+    assert pk == mock.public_key_from_secret(one_time)

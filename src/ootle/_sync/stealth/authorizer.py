@@ -3,20 +3,11 @@
 Mirrors TS ``WalletStealthAuthorizer`` and the Rust ``StealthTransfer::
 prepare`` signing surface (``crates/wallet/ootle-rs/src/stealth/builder.rs``).
 
-## Design choice — (a) post-builder patching
-
-Step 04 emits an *incomplete* :class:`StealthTransferInstruction` (no
-balance proof, empty ``required_signers``); the authorizer hydrates it
-by fetching stealth-input UTXOs, computing the input mask, signing the
-balance proof, and **patching** the instruction in-place before seal.
-This keeps the contract narrow — Step 04 owns the *shape*, Step 05 the
-*crypto*.
-
-## Signing
-
-:meth:`prepare` hydrates the spec. :meth:`create_authorizations` then
-signs each spent stealth input with its one-time spend key (see
-``_authorizer_sign``); fold those in and the default signer seals.
+The builder emits an incomplete :class:`StealthTransferInstruction`;
+:meth:`prepare` fetches the stealth-input UTXOs, signs the balance proof
+and patches the instruction in place. :meth:`create_authorizations` then
+signs each spent input with its one-time key (``_authorizer_sign``);
+fold those in and the default signer seals.
 """
 
 from __future__ import annotations
@@ -39,6 +30,8 @@ from ootle._types.stealth import Mask, StealthTransferStatement
 from ootle._types.transaction import UnsignedTransaction
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
+
     from ootle._sync.client import OotleClient
     from ootle._crypto import CryptoProvider
     from ootle._crypto._stealth_provider import SyncStealthCryptoProvider
@@ -145,9 +138,7 @@ class WalletStealthAuthorizer:
         statement = self._spec.statement
         if not statement.inputs_statement.inputs and not statement.outputs_statement.outputs:
             return statement
-        output_mask = self._spec.output_mask
-        if output_mask is None:
-            output_mask = Mask(_ZERO_MASK)
+        output_mask = self._spec.output_mask or Mask(_ZERO_MASK)
         proof = offload(
             lambda: sign_balance_proof(
                 crypto,
@@ -163,27 +154,38 @@ class WalletStealthAuthorizer:
             balance_proof=proof,
         )
 
-    def create_authorizations(self, client: OotleClient) -> tuple[TransactionAuthorization, ...]:
+    def create_authorizations(
+        self, client: OotleClient, *, external_authorizers: Iterable[bytes] = ()
+    ) -> tuple[TransactionAuthorization, ...]:
         """Sign each spent stealth input with its one-time spend key.
 
         Mirrors Rust ``WalletStealthAuthorizer::create_authorizations``.
-        Call after :meth:`prepare`; fold the returned authorizations into
-        the request you seal. Empty when no stealth inputs are spent.
+        Call after :meth:`prepare` and fold the result into the request you
+        seal (empty with no stealth inputs). ``external_authorizers`` are
+        the keys of any other authorizations folded in: each signature
+        commits to the full set.
         """
         crypto = cast("StealthSpendCrypto", self._stealth_crypto(client))
-        return create_stealth_authorizations(self._wallet, self._spec, crypto)
+        return create_stealth_authorizations(
+            self._wallet, self._spec, crypto, external_authorizers=external_authorizers
+        )
 
-    def add_signature(self, tx_json: str, seal_pk: bytes, *, crypto: CryptoProvider) -> str:
-        """Append the account-key Schnorr signature, unless explicitly skipped."""
+    def add_signature(
+        self,
+        tx_json: str,
+        seal_pk: bytes,
+        authorizers: Sequence[bytes],
+        *,
+        crypto: CryptoProvider,
+    ) -> str:
+        """Add the account-key signature, unless explicitly skipped."""
         if not self._must_sign_with_account_key:
             return tx_json
-        signer = self._default_signer()
-        return signer.add_signature(tx_json, seal_pk, crypto=crypto)
+        return self._default_signer().add_signature(tx_json, seal_pk, authorizers, crypto=crypto)
 
     def seal(self, tx_json: str, *, crypto: CryptoProvider) -> str:
         """Seal with the wallet's default signer (TS authorizer does the same)."""
-        signer = self._default_signer()
-        return signer.seal(tx_json, crypto=crypto)
+        return self._default_signer().seal(tx_json, crypto=crypto)
 
     def _default_signer(self) -> Signer:
         addr = self._wallet.default_address
