@@ -118,7 +118,7 @@ def test_seal_co_signs_then_seals_for_two_signers() -> None:
     # Default `a` seals; non-default `b` add_signatures first, committing
     # to `a`'s owner_pk as the seal_pk (regression for bug 01 — must NOT
     # be `b`'s own pk).
-    assert sealed.json == "sealed(a):tx|sig(b,seal=01)"
+    assert sealed.json == "sealed(a):tx|sig(b,seal=01,auth=[02])"
 
 
 def test_seal_passes_default_pk_not_signer_pk_as_seal_pk() -> None:
@@ -143,8 +143,10 @@ def test_authorize_returns_authorization() -> None:
     crypto = MockCryptoProvider()
     addr = _addr(crypto, 0x01)
     wallet = OotleWallet(StubSigner(addr=addr, label="a"))
-    auth = wallet.authorize(addr, UnsignedTransaction(json="tx"), crypto=crypto)
-    assert auth.json == "tx|sig(a,seal=01)"
+    auth = wallet.authorize(
+        addr, UnsignedTransaction(json="tx"), authorizers=[addr.owner_pk], crypto=crypto
+    )
+    assert auth.json == "tx|sig(a,seal=01,auth=[01])"
 
 
 def test_authorize_commits_to_default_seal_pk() -> None:
@@ -158,8 +160,10 @@ def test_authorize_commits_to_default_seal_pk() -> None:
     addr_b = _addr(crypto, 0x02)
     wallet = OotleWallet(StubSigner(addr=addr_a, label="a"))
     wallet.register(StubSigner(addr=addr_b, label="b"))
-    auth = wallet.authorize(addr_b, UnsignedTransaction(json="tx"), crypto=crypto)
-    assert auth.json == "tx|sig(b,seal=01)"
+    auth = wallet.authorize(
+        addr_b, UnsignedTransaction(json="tx"), authorizers=[addr_b.owner_pk], crypto=crypto
+    )
+    assert auth.json == "tx|sig(b,seal=01,auth=[02])"
 
 
 def test_authorize_unknown_address_raises() -> None:
@@ -167,7 +171,7 @@ def test_authorize_unknown_address_raises() -> None:
     addr = _addr(crypto, 0x01)
     wallet = OotleWallet()
     with pytest.raises(KeyProviderNotFoundError):
-        wallet.authorize(addr, UnsignedTransaction(json="tx"), crypto=crypto)
+        wallet.authorize(addr, UnsignedTransaction(json="tx"), authorizers=(), crypto=crypto)
 
 
 def test_local_signer_can_be_registered_with_real_bridge(

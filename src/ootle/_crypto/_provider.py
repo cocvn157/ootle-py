@@ -30,7 +30,10 @@ invoke them directly.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,12 +93,24 @@ class CryptoProvider(Protocol):
         """Decode a bech32m Ootle address into its byte components."""
         ...
 
-    def hash_unsigned_transaction(self, unsigned_json: str, seal_pk: bytes) -> bytes:
-        """Return the 64-byte signing message for an unsigned transaction."""
+    def hash_unsigned_transaction(
+        self, unsigned_json: str, seal_pk: bytes, authorizers: Sequence[bytes]
+    ) -> bytes:
+        """Return the 64-byte authorization message for an unsigned transaction.
+
+        The message commits to ``seal_pk`` and to ``authorizers``, the 32-byte
+        public key of every authorizer (any order).
+        """
         ...
 
-    def add_transaction_signer(self, tx_json: str, signer_sk: bytes, seal_pk: bytes) -> str:
-        """Append a signature to an unsigned/unsealed transaction. Returns JSON."""
+    def add_transaction_signer(
+        self, tx_json: str, signer_sk: bytes, seal_pk: bytes, authorizers: Sequence[bytes]
+    ) -> str:
+        """Add a signature to an unsigned/unsealed transaction. Returns JSON.
+
+        ``authorizers`` is every authorizer's 32-byte public key, the signer's
+        own included; every authorizer must sign over the same set.
+        """
         ...
 
     def seal_transaction(self, tx_json: str, seal_sk: bytes) -> str:

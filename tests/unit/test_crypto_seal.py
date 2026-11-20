@@ -19,7 +19,7 @@ DUMMY_PK = bytes(32)
 
 def test_hash_unsigned_transaction_rejects_invalid_json(crypto: CryptoProvider) -> None:
     with pytest.raises(CryptoBridgeError) as exc:
-        crypto.hash_unsigned_transaction("not-json", DUMMY_PK)
+        crypto.hash_unsigned_transaction("not-json", DUMMY_PK, ())
     assert exc.value.context == "hash_unsigned_transaction"
 
 
@@ -31,5 +31,5 @@ def test_seal_transaction_rejects_invalid_json(crypto: CryptoProvider) -> None:
 
 def test_add_transaction_signer_rejects_invalid_json(crypto: CryptoProvider) -> None:
     with pytest.raises(CryptoBridgeError) as exc:
-        crypto.add_transaction_signer("not-json", DUMMY_SK, DUMMY_PK)
+        crypto.add_transaction_signer("not-json", DUMMY_SK, DUMMY_PK, ())
     assert exc.value.context == "add_transaction_signer"

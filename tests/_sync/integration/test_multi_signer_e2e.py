@@ -58,8 +58,9 @@ def test_multi_signer_e2e(indexer_url: str) -> None:
         # Co-signer B authorises.
         crypto = load_default_provider()
         seal_pk = a_secret.to_address().owner_pk
+        authorizers = (b_secret.to_address().owner_pk,)
         auth_b = TransactionAuthorization(
-            json=signer_b.add_signature(unsigned.json, seal_pk, crypto=crypto)
+            json=signer_b.add_signature(unsigned.json, seal_pk, authorizers, crypto=crypto)
         )
         # Default signer A seals + sends with B's authorisation folded in.
         request = TransactionRequest().with_transaction(unsigned).add_authorization(auth_b)

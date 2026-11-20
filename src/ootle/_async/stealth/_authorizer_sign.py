@@ -8,8 +8,10 @@ the transaction must include a signature from the matching one-time
 secret. Each required signer derives that secret from the UTXO's sender
 ``public_nonce`` and its account secret (see
 :meth:`ootle._signing.LocalSigner.add_stealth_signature`) and signs the
-unsigned transaction, committing to the account seal key. The account key
-seals the folded transaction afterwards.
+unsigned transaction, committing to the account seal key and the full
+authorizer set: the external authorizers, every one-time key, and the
+wallet's co-signers (which :meth:`OotleWallet.seal` signs with). The
+account key seals the folded transaction afterwards.
 """
 
 from __future__ import annotations
@@ -20,9 +22,12 @@ from typing import TYPE_CHECKING
 from ootle._async._offload import offload
 from ootle._signing import StealthSigner
 from ootle._types.transaction import TransactionAuthorization
+from ootle._wallet_seal import authorizer_set
 from ootle.errors import InvalidArgumentError, KeyProviderNotFoundError
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from ootle._async.stealth._spec import StealthTransferSpec
     from ootle._signing import StealthSpendCrypto
     from ootle._types.address import Address
@@ -33,6 +38,8 @@ async def create_stealth_authorizations(
     wallet: OotleWallet,
     spec: StealthTransferSpec,
     crypto: StealthSpendCrypto,
+    *,
+    external_authorizers: Iterable[bytes] = (),
 ) -> tuple[TransactionAuthorization, ...]:
     """Produce one stealth-key authorization per spent stealth input.
 
@@ -58,16 +65,18 @@ async def create_stealth_authorizations(
         raise NotImplementedError(msg)
     seal_pk = wallet.default_address.owner_pk
     unsigned_json = spec.unsigned.json
+    signers = [
+        (_stealth_signer_for(wallet, r.signer), r.public_nonce) for r in reqs.other_signers()
+    ]
+    if not signers:
+        return ()
+    own = [s.stealth_public_key(nonce, crypto=crypto) for s, nonce in signers]
+    keys = authorizer_set(external_authorizers, own, wallet.cosigner_keys())
     auths: list[TransactionAuthorization] = []
-    for req in reqs.other_signers():
-        signer = _stealth_signer_for(wallet, req.signer)
+    for signer, nonce in signers:
         signed = await offload(
             partial(
-                signer.add_stealth_signature,
-                unsigned_json,
-                req.public_nonce,
-                seal_pk,
-                crypto=crypto,
+                signer.add_stealth_signature, unsigned_json, nonce, seal_pk, keys, crypto=crypto
             )
         )
         auths.append(TransactionAuthorization(json=signed))

@@ -10,8 +10,12 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from ootle._crypto import ParsedAddress
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 def _sha(*parts: bytes | str | int) -> bytes:
@@ -71,11 +75,15 @@ class MockCryptoProvider:
             destination_tag=None,
         )
 
-    def hash_unsigned_transaction(self, unsigned_json: str, seal_pk: bytes) -> bytes:
-        return _sha(b"hash_tx", unsigned_json, seal_pk)
+    def hash_unsigned_transaction(
+        self, unsigned_json: str, seal_pk: bytes, authorizers: Sequence[bytes]
+    ) -> bytes:
+        return _sha(b"hash_tx", unsigned_json, seal_pk, b"".join(sorted(authorizers)))
 
-    def add_transaction_signer(self, tx_json: str, signer_sk: bytes, seal_pk: bytes) -> str:
-        marker = _sha(b"signer", signer_sk, seal_pk).hex()
+    def add_transaction_signer(
+        self, tx_json: str, signer_sk: bytes, seal_pk: bytes, authorizers: Sequence[bytes]
+    ) -> str:
+        marker = _sha(b"signer", signer_sk, seal_pk, b"".join(sorted(authorizers))).hex()
         return f'{{"prev":{tx_json},"signer":"{marker}"}}'
 
     def stealth_dh_secret(

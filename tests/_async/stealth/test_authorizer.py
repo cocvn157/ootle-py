@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from typing import Any, cast
 
 import pytest
@@ -91,7 +92,7 @@ async def test_add_signature_returns_unchanged_when_account_key_skipped(
         client.wallet, _fake_spec(), must_sign_with_account_key=False
     )
     body = '{"id":"tx"}'
-    assert auth.add_signature(body, b"\x00" * 32, crypto=cast("Any", None)) == body
+    assert auth.add_signature(body, b"\x00" * 32, (), crypto=cast("Any", None)) == body
     await client.aclose()
 
 
@@ -100,7 +101,9 @@ async def test_add_signature_delegates_to_default_signer(httpx_mock: HTTPXMock) 
     client = await make_client(httpx_mock)
     assert client.wallet is not None
     auth = AsyncWalletStealthAuthorizer(client.wallet, _fake_spec())
-    out = auth.add_signature('{"id":"tx"}', b"\xaa" * 32, crypto=cast("Any", _StubCrypto()))
+    out = auth.add_signature(
+        '{"id":"tx"}', b"\xaa" * 32, (b"\xaa" * 32,), crypto=cast("Any", _StubCrypto())
+    )
     assert "transaction_signer" in out
     await client.aclose()
 
@@ -137,7 +140,9 @@ def _fake_spec() -> Any:
 class _StubCrypto:
     """Tiny stand-in for the WASM ``CryptoProvider``."""
 
-    def add_transaction_signer(self, tx_json: str, _sk: bytes, _pk: bytes) -> str:
+    def add_transaction_signer(
+        self, tx_json: str, _sk: bytes, _pk: bytes, _authorizers: Sequence[bytes]
+    ) -> str:
         return f"{tx_json}|transaction_signer"
 
     def seal_transaction(self, tx_json: str, _sk: bytes) -> str:

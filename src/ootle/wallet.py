@@ -12,12 +12,8 @@ import logging
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
-from ootle._types.transaction import (
-    Transaction,
-    TransactionAuthorization,
-    UnsignedTransaction,
-)
-from ootle._wallet_seal import fold_authorizations
+from ootle._types.transaction import Transaction, TransactionAuthorization, UnsignedTransaction
+from ootle._wallet_seal import authorizer_set, seal_request
 from ootle.errors import (
     DefaultSignerNotSetError,
     InvalidArgumentError,
@@ -27,7 +23,7 @@ from ootle.errors import (
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
 
     from ootle._crypto import CryptoProvider
     from ootle._signing import Signer
@@ -104,12 +100,16 @@ class OotleWallet:
         address: Address,
         unsigned: UnsignedTransaction,
         *,
+        authorizers: Iterable[bytes],
         crypto: CryptoProvider,
     ) -> TransactionAuthorization:
         """Co-sign ``unsigned`` with the signer registered at ``address``.
 
         The co-signature commits to the wallet's default (seal) signer's
-        owner public key, matching the upstream Rust signing message.
+        owner public key and to ``authorizers``: the owner public key of
+        every co-signer, ``address``'s included. Every co-signer must sign
+        over the same set, and the sealed transaction must carry an
+        authorization from each key in it.
 
         Returns the resulting :class:`TransactionAuthorization`.
         """
@@ -121,7 +121,8 @@ class OotleWallet:
         default = self._require_default()
         seal_pk = default.address().owner_pk
         logger.debug("co-authorizing with signer at %s", address.bech32m)
-        signed_json = signer.add_signature(unsigned.json, seal_pk, crypto=crypto)
+        keys = authorizer_set(authorizers)
+        signed_json = signer.add_signature(unsigned.json, seal_pk, keys, crypto=crypto)
         return TransactionAuthorization(json=signed_json)
 
     def seal(self, request: TransactionRequest, *, crypto: CryptoProvider) -> Transaction:
@@ -130,21 +131,23 @@ class OotleWallet:
         Order: every authorisation in ``request.authorizations`` is
         folded into the transaction JSON, then every non-default
         registered signer adds its signature, and finally the default
-        signer seals.
+        signer seals. The authorizer set is the folded authorisations'
+        keys plus every non-default signer's, so a co-signer that signed
+        earlier must have signed over that same set.
         """
         if request.transaction is None:
             msg = "TransactionRequest.transaction is None — nothing to seal"
             raise InvalidArgumentError(msg)
         default = self._require_default()
-        seal_pk = default.address().owner_pk
-        tx_json = fold_authorizations(request.transaction, request.authorizations)
-        for address, signer in self._signers.items():
-            if address == self._default_address:
-                continue
-            logger.debug("folding signer at %s into seal", address.bech32m)
-            tx_json = signer.add_signature(tx_json, seal_pk, crypto=crypto)
-        sealed_json = default.seal(tx_json, crypto=crypto)
-        return Transaction(json=sealed_json)
+        cosigners = [s for a, s in self._signers.items() if a != self._default_address]
+        sealed = seal_request(
+            default, cosigners, request.transaction, request.authorizations, crypto=crypto
+        )
+        return Transaction(json=sealed)
+
+    def cosigner_keys(self) -> tuple[bytes, ...]:
+        """Owner public keys of the non-default signers :meth:`seal` signs with."""
+        return tuple(a.owner_pk for a in self._signers if a != self._default_address)
 
     def _require_default(self) -> Signer:
         if self._default_address is None:

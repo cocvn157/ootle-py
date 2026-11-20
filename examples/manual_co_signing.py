@@ -93,18 +93,23 @@ async def main() -> None:
         # ------------------------------------------------------------------
         # >>> Process boundary: wallet A → wallet B
         # In a real deployment wallet A serialises `unsigned.json` and
-        # ships the string (plus A's owner_pk) to wallet B over the wire.
+        # ships the string, A's owner_pk and the authorizer set to wallet B.
+        # The set holds every co-signer's key and is fixed before anyone
+        # signs: here B is the only co-signer.
         # ------------------------------------------------------------------
         unsigned_blob: str = unsigned.json
         seal_pk: bytes = a_address.owner_pk
+        authorizers: list[bytes] = [signer_b.address().owner_pk]
         print(f"\nUnsigned tx blob ({len(unsigned_blob)} bytes) -> wallet B")
 
         # On wallet B's side: rehydrate, sign with B's secret committing
-        # to A's owner_pk as the seal_pk, return the JSON blob. Wallet B
-        # never sees any of A's secrets — only public data.
+        # to A's owner_pk and the authorizer set, return the JSON blob.
+        # Wallet B never sees any of A's secrets — only public data.
         unsigned_received = UnsignedTransaction(json=unsigned_blob)
         crypto = load_default_provider()
-        auth_blob: str = signer_b.add_signature(unsigned_received.json, seal_pk, crypto=crypto)
+        auth_blob: str = signer_b.add_signature(
+            unsigned_received.json, seal_pk, authorizers, crypto=crypto
+        )
 
         # ------------------------------------------------------------------
         # <<< Process boundary: wallet B → wallet A

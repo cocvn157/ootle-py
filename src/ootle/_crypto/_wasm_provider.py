@@ -13,6 +13,7 @@ provider natively satisfies both ``CryptoProvider`` and
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from ._bridge import Bridge, _abi, load_default_bridge
 from ._provider import ParsedAddress
@@ -23,6 +24,9 @@ from ._wasm_results import (
     take_str_result,
 )
 from ._wasm_stealth import WasmStealthMethodsMixin
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,22 +110,28 @@ class WasmCryptoProvider(WasmStealthMethodsMixin):
                 owner_key=owner, view_key=view, network=network, destination_tag=tag
             )
 
-    def hash_unsigned_transaction(self, unsigned_json: str, seal_pk: bytes) -> bytes:
+    def hash_unsigned_transaction(
+        self, unsigned_json: str, seal_pk: bytes, authorizers: Sequence[bytes]
+    ) -> bytes:
         with self._bridge.lock:
             jp, jl = _abi.alloc_str(self._bridge, unsigned_json)
             pp, pl = _abi.alloc_bytes(self._bridge, seal_pk)
+            ap, al = _abi.alloc_bytes(self._bridge, b"".join(authorizers))
             ret = self._bridge.exports["hashUnsignedTransaction"](
-                self._bridge.store, jp, jl, pp, pl
+                self._bridge.store, jp, jl, pp, pl, ap, al
             )
             return take_bytes_result(self._bridge, ret, context="hash_unsigned_transaction")
 
-    def add_transaction_signer(self, tx_json: str, signer_sk: bytes, seal_pk: bytes) -> str:
+    def add_transaction_signer(
+        self, tx_json: str, signer_sk: bytes, seal_pk: bytes, authorizers: Sequence[bytes]
+    ) -> str:
         with self._bridge.lock:
             jp, jl = _abi.alloc_str(self._bridge, tx_json)
             sp, sl = _abi.alloc_bytes(self._bridge, signer_sk)
             pp, pl = _abi.alloc_bytes(self._bridge, seal_pk)
+            ap, al = _abi.alloc_bytes(self._bridge, b"".join(authorizers))
             ret = self._bridge.exports["addTransactionSigner"](
-                self._bridge.store, jp, jl, sp, sl, pp, pl
+                self._bridge.store, jp, jl, sp, sl, pp, pl, ap, al
             )
             return take_str_result(self._bridge, ret, context="add_transaction_signer")
 

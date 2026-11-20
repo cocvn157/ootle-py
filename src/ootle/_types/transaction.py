@@ -47,7 +47,7 @@ class UnsignedTransaction:
         from ootle._crypto import load_default_provider  # noqa: PLC0415
 
         crypto = load_default_provider()
-        digest = crypto.hash_unsigned_transaction(self.json, b"\x00" * 32)
+        digest = crypto.hash_unsigned_transaction(self.json, b"\x00" * 32, ())
         return TransactionId(digest.hex())
 
 

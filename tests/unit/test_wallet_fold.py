@@ -42,7 +42,7 @@ def test_seal_folds_authorizations_then_seals() -> None:
     addr = _addr(crypto, 0x01)
     wallet = OotleWallet(StubSigner(addr=addr, label="a"))
     body = {"id": "tx-body"}
-    auth_sig = {"public_key": "PK1", "signature": "SIG1"}
+    auth_sig = {"public_key": "01" * 32, "signature": "SIG1"}
     request = (
         TransactionRequest()
         .with_transaction(UnsignedTransaction(json=json.dumps(body)))
@@ -59,13 +59,13 @@ def test_seal_folds_authorizations_then_seals() -> None:
 
 
 def test_seal_merges_multiple_authorizations() -> None:
-    """Multiple co-authorisations accumulate signatures in order."""
+    """Multiple co-authorisations accumulate signatures in key order."""
     crypto = MockCryptoProvider()
     addr = _addr(crypto, 0x01)
     wallet = OotleWallet(StubSigner(addr=addr, label="a"))
     body = {"id": "tx-body"}
-    sig_b = {"public_key": "PK_B", "signature": "SIG_B"}
-    sig_c = {"public_key": "PK_C", "signature": "SIG_C"}
+    sig_b = {"public_key": "0b" * 32, "signature": "SIG_B"}
+    sig_c = {"public_key": "0c" * 32, "signature": "SIG_C"}
     request = (
         TransactionRequest()
         .with_transaction(UnsignedTransaction(json=json.dumps(body)))
@@ -90,7 +90,7 @@ def test_fold_authorizations_empty_is_passthrough() -> None:
 
 def test_fold_authorizations_preserves_body_and_appends_signatures() -> None:
     body = {"id": "tx-body", "instructions": ["foo"]}
-    sig = {"public_key": "PK", "signature": "SIG"}
+    sig = {"public_key": "aa" * 32, "signature": "SIG"}
     tx = UnsignedTransaction(json=json.dumps(body))
     auth = TransactionAuthorization(json=json.dumps({"transaction": body, "signatures": [sig]}))
     folded = json.loads(_fold_authorizations(tx, (auth,)))
@@ -99,8 +99,8 @@ def test_fold_authorizations_preserves_body_and_appends_signatures() -> None:
 
 def test_fold_authorizations_accumulates_across_multiple_auths() -> None:
     body = {"id": "tx"}
-    sig1 = {"public_key": "A", "signature": "1"}
-    sig2 = {"public_key": "B", "signature": "2"}
+    sig1 = {"public_key": "0a" * 32, "signature": "1"}
+    sig2 = {"public_key": "0b" * 32, "signature": "2"}
     tx = UnsignedTransaction(json=json.dumps(body))
     auths = (
         TransactionAuthorization(json=json.dumps({"transaction": body, "signatures": [sig1]})),
@@ -108,3 +108,35 @@ def test_fold_authorizations_accumulates_across_multiple_auths() -> None:
     )
     folded = json.loads(_fold_authorizations(tx, auths))
     assert folded["signatures"] == [sig1, sig2]
+
+
+def test_fold_authorizations_sorts_and_dedups_by_key() -> None:
+    """The mempool rejects an authorization list not strictly ascending by key."""
+    body = {"id": "tx"}
+    low = {"public_key": "01" * 32, "signature": "L"}
+    high = {"public_key": "FF" * 32, "signature": "H"}
+    tx = UnsignedTransaction(json=json.dumps(body))
+    auths = tuple(
+        TransactionAuthorization(json=json.dumps({"transaction": body, "signatures": [sig]}))
+        for sig in (high, low, high)
+    )
+    folded = json.loads(_fold_authorizations(tx, auths))
+    assert folded["signatures"] == [low, high]
+
+
+def test_seal_cosigner_signs_over_folded_and_own_keys() -> None:
+    """A seal-time co-signer's set holds the folded keys and every co-signer's."""
+    crypto = MockCryptoProvider()
+    wallet = OotleWallet(StubSigner(addr=_addr(crypto, 0x01), label="a"))
+    wallet.register(StubSigner(addr=_addr(crypto, 0x05), label="b"))
+    body = {"id": "tx"}
+    folded = {"public_key": "09" * 32, "signature": "S"}
+    request = (
+        TransactionRequest()
+        .with_transaction(UnsignedTransaction(json=json.dumps(body)))
+        .add_authorization(
+            TransactionAuthorization(json=json.dumps({"transaction": body, "signatures": [folded]}))
+        )
+    )
+    sealed = wallet.seal(request, crypto=crypto)
+    assert sealed.json.endswith("|sig(b,seal=01,auth=[05,09])")

@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from ootle._crypto import CryptoProvider
     from ootle._types.address import Address
 
@@ -25,10 +27,18 @@ class StubSigner:
     def address(self) -> Address:
         return self.addr
 
-    def add_signature(self, tx_json: str, seal_pk: bytes, *, crypto: CryptoProvider) -> str:
+    def add_signature(
+        self,
+        tx_json: str,
+        seal_pk: bytes,
+        authorizers: Sequence[bytes],
+        *,
+        crypto: CryptoProvider,
+    ) -> str:
         # ``crypto`` is unused in tests but the Protocol mandates the kwarg.
         _ = crypto
-        return f"{tx_json}|sig({self.label},seal={seal_pk[0]:02x})"
+        keys = ",".join(f"{k[0]:02x}" for k in authorizers)
+        return f"{tx_json}|sig({self.label},seal={seal_pk[0]:02x},auth=[{keys}])"
 
     def seal(self, tx_json: str, *, crypto: CryptoProvider) -> str:
         _ = crypto
